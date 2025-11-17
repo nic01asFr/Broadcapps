@@ -501,10 +501,11 @@
         
         // État de l'application
         let gristAPI;
-        let currentTable;
         let eventSource;
         let interventions = [];
         let currentFilter = 'actives';
+        let sseReconnectAttempts = 0;
+        let maxSseReconnectAttempts = 3;
         let stats = {
             total: 0,
             enCours: 0,
@@ -532,10 +533,7 @@
                 // Connexion Grist API
                 gristAPI = window.grist;
                 await gristAPI.ready({ requiredAccess: 'read table' });
-                
-                // Récupère la table
-                currentTable = await gristAPI.selectedTable || await gristAPI.getTable();
-                
+
                 // Charge les données initiales
                 await loadData();
                 
@@ -591,42 +589,60 @@
         function connectSSE() {
             if (!CONFIG.sseUrl) {
                 console.warn('Pas d\'URL SSE configurée');
+                updateLiveIndicator('disconnected');
                 return;
             }
-            
+
             console.log('🔌 Connexion au flux SSE...');
             updateLiveIndicator('connecting');
-            
-            eventSource = new EventSource(CONFIG.sseUrl);
-            
-            eventSource.onopen = () => {
-                console.log('✅ Connecté au flux temps réel');
-                updateLiveIndicator('connected');
-                showNotification('🟢 Connexion temps réel activée', 'success');
-            };
-            
-            eventSource.onmessage = (event) => {
-                try {
-                    const update = JSON.parse(event.data);
-                    handleRealtimeUpdate(update);
-                } catch (e) {
-                    console.error('Erreur parsing SSE:', e);
-                }
-            };
-            
-            eventSource.onerror = (error) => {
-                console.error('❌ Erreur SSE:', error);
-                updateLiveIndicator('disconnected');
-                
-                // Reconnexion auto après 5s
-                setTimeout(() => {
-                    console.log('🔄 Reconnexion...');
+
+            try {
+                eventSource = new EventSource(CONFIG.sseUrl);
+
+                eventSource.onopen = () => {
+                    console.log('✅ Connecté au flux temps réel');
+                    updateLiveIndicator('connected');
+                    sseReconnectAttempts = 0; // Reset counter on success
+                    showNotification('🟢 Connexion temps réel activée', 'success');
+                };
+
+                eventSource.onmessage = (event) => {
+                    try {
+                        const update = JSON.parse(event.data);
+                        handleRealtimeUpdate(update);
+                    } catch (e) {
+                        console.error('Erreur parsing SSE:', e);
+                    }
+                };
+
+                eventSource.onerror = (error) => {
+                    console.error('❌ Erreur SSE:', error);
+                    updateLiveIndicator('disconnected');
+
                     if (eventSource) {
                         eventSource.close();
                     }
-                    connectSSE();
-                }, 5000);
-            };
+
+                    sseReconnectAttempts++;
+
+                    if (sseReconnectAttempts <= maxSseReconnectAttempts) {
+                        // Reconnexion avec backoff exponentiel
+                        const delay = Math.min(5000 * sseReconnectAttempts, 30000);
+                        console.log(`🔄 Reconnexion dans ${delay/1000}s (tentative ${sseReconnectAttempts}/${maxSseReconnectAttempts})...`);
+
+                        setTimeout(() => {
+                            connectSSE();
+                        }, delay);
+                    } else {
+                        console.warn('⚠️ Nombre maximum de tentatives SSE atteint. Mode polling uniquement.');
+                        showNotification('⚠️ Connexion temps réel non disponible. Mode refresh automatique activé.', 'warning');
+                    }
+                };
+            } catch (e) {
+                console.error('Erreur création EventSource:', e);
+                updateLiveIndicator('disconnected');
+                showNotification('⚠️ Impossible de se connecter au flux temps réel. Vérifiez l\'URL SSE.', 'error');
+            }
         }
         
         function updateLiveIndicator(status) {
@@ -692,11 +708,11 @@
         // ============================================
         
         async function loadData() {
-            if (!currentTable) return;
-            
+            if (!gristAPI) return;
+
             try {
-                const records = await currentTable.fetchSelectedTable();
-                
+                const records = await gristAPI.fetchSelectedTable();
+
                 interventions = records.map(r => ({
                     id: r.id,
                     agent: r.Agent || 'Non assigné',
