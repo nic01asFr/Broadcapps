@@ -1,0 +1,266 @@
+{
+  "name": "Grist Webhook → Redis",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "grist-realtime",
+        "responseMode": "responseNode",
+        "options": {
+          "allowedOrigins": "*"
+        }
+      },
+      "id": "webhook-grist",
+      "name": "🔔 Webhook Grist",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 300],
+      "webhookId": "grist-realtime"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.id }}",
+              "operation": "isNotEmpty"
+            }
+          ]
+        }
+      },
+      "id": "validate-payload",
+      "name": "✅ Validation Payload",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [440, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Récupère les données du webhook Grist\nconst gristData = $input.all()[0].json;\n\n// Détermine le type d'événement\nconst eventType = gristData.action || 'update';\n\n// Prépare le message structuré\nconst message = {\n  timestamp: new Date().toISOString(),\n  type: 'intervention_update',\n  action: eventType,\n  data: {\n    id: gristData.id,\n    agent: gristData.fields?.Agent || gristData.Agent || 'Non assigné',\n    localisation: gristData.fields?.Localisation || gristData.Localisation || 'Non spécifié',\n    type: gristData.fields?.Type || gristData.Type || 'Autre',\n    statut: gristData.fields?.Statut || gristData.Statut || 'En attente',\n    priorite: gristData.fields?.Priorite || gristData.Priorite || 'Normale',\n    commentaire: gristData.fields?.Commentaire || gristData.Commentaire || ''\n  },\n  metadata: {\n    source: 'grist',\n    workflowId: $workflow.id,\n    executionId: $execution.id\n  }\n};\n\n// Log pour monitoring\nconsole.log('📡 Broadcasting:', JSON.stringify(message, null, 2));\n\nreturn { json: message };"
+      },
+      "id": "prepare-broadcast",
+      "name": "📦 Préparer Message",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [640, 200]
+    },
+    {
+      "parameters": {
+        "operation": "publish",
+        "channel": "grist-realtime-interventions",
+        "message": "={{ JSON.stringify($json) }}"
+      },
+      "id": "redis-publish",
+      "name": "📢 Redis Publish",
+      "type": "n8n-nodes-base.redis",
+      "typeVersion": 1,
+      "position": [840, 200],
+      "credentials": {
+        "redis": {
+          "id": "1",
+          "name": "Redis CEREMA"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "set",
+        "key": "={{ 'intervention:' + $json.data.id }}",
+        "value": "={{ JSON.stringify($json.data) }}",
+        "options": {
+          "expire": true,
+          "ttl": 86400
+        }
+      },
+      "id": "redis-cache",
+      "name": "💾 Cache Redis (24h)",
+      "type": "n8n-nodes-base.redis",
+      "typeVersion": 1,
+      "position": [1040, 200],
+      "credentials": {
+        "redis": {
+          "id": "1",
+          "name": "Redis CEREMA"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.data.priorite }}",
+              "value2": "Urgente"
+            }
+          ]
+        }
+      },
+      "id": "filter-urgent",
+      "name": "🚨 Filtre Urgentes",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1240, 200]
+    },
+    {
+      "parameters": {
+        "url": "https://matrix.agent.tchap.gouv.fr/_matrix/client/r0/rooms/{{ $env.TCHAP_ROOM_ID }}/send/m.room.message",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"msgtype\": \"m.text\",\n  \"body\": \"🚨 URGENCE: {{ $json.data.agent }} - {{ $json.data.localisation }} ({{ $json.data.statut }})\",\n  \"format\": \"org.matrix.custom.html\",\n  \"formatted_body\": \"<strong>🚨 INTERVENTION URGENTE</strong><br>👤 Agent: {{ $json.data.agent }}<br>📍 Lieu: {{ $json.data.localisation }}<br>📊 Statut: {{ $json.data.statut }}\"\n}",
+        "options": {}
+      },
+      "id": "notify-tchap",
+      "name": "💬 Notification Tchap",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [1440, 100],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "2",
+          "name": "Tchap Token"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\n  \"success\": true,\n  \"message\": \"Broadcast envoyé avec succès\",\n  \"timestamp\": \"{{ $json.timestamp }}\",\n  \"interventionId\": \"{{ $json.data.id }}\"\n}"
+      },
+      "id": "respond-success",
+      "name": "✅ Réponse Succès",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1240, 400]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseCode": 400,
+        "responseBody": "={\n  \"success\": false,\n  \"error\": \"Payload invalide - ID manquant\",\n  \"timestamp\": \"{{ new Date().toISOString() }}\"\n}"
+      },
+      "id": "respond-error",
+      "name": "❌ Réponse Erreur",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [640, 500]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Log métriques\nconst data = $input.all()[0].json;\n\nconst metrics = {\n  timestamp: new Date().toISOString(),\n  eventType: data.type,\n  action: data.action,\n  priority: data.data.priorite,\n  status: data.data.statut,\n  agent: data.data.agent,\n  processingTime: Date.now() - new Date(data.timestamp).getTime(),\n  workflowId: $workflow.id,\n  executionId: $execution.id\n};\n\nconsole.log('📊 Metrics:', JSON.stringify(metrics, null, 2));\n\nreturn { json: metrics };"
+      },
+      "id": "log-metrics",
+      "name": "📊 Log Metrics",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1440, 400]
+    }
+  ],
+  "connections": {
+    "🔔 Webhook Grist": {
+      "main": [
+        [
+          {
+            "node": "✅ Validation Payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "✅ Validation Payload": {
+      "main": [
+        [
+          {
+            "node": "📦 Préparer Message",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "❌ Réponse Erreur",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "📦 Préparer Message": {
+      "main": [
+        [
+          {
+            "node": "📢 Redis Publish",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "📢 Redis Publish": {
+      "main": [
+        [
+          {
+            "node": "💾 Cache Redis (24h)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "💾 Cache Redis (24h)": {
+      "main": [
+        [
+          {
+            "node": "🚨 Filtre Urgentes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🚨 Filtre Urgentes": {
+      "main": [
+        [
+          {
+            "node": "💬 Notification Tchap",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "✅ Réponse Succès",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "✅ Réponse Succès",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "✅ Réponse Succès": {
+      "main": [
+        [
+          {
+            "node": "📊 Log Metrics",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 0,
+  "updatedAt": "2024-11-17T10:00:00.000Z",
+  "versionId": "1"
+}
