@@ -1,0 +1,1015 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard Interventions Temps Réel</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #f8fafc;
+            overflow-x: hidden;
+        }
+        
+        #dashboard {
+            padding: 20px;
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 30px;
+            background: white;
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            flex-wrap: wrap;
+            gap: 15px;
+        }
+        
+        .header h1 {
+            color: #1e3a8a;
+            font-size: 1.5em;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .live-indicator {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-weight: 600;
+            font-size: 0.9em;
+            transition: all 0.3s;
+        }
+        
+        .live-indicator.connected {
+            background: #10b981;
+            color: white;
+        }
+        
+        .live-indicator.disconnected {
+            background: #ef4444;
+            color: white;
+        }
+        
+        .live-indicator.connecting {
+            background: #f59e0b;
+            color: white;
+        }
+        
+        .pulse {
+            width: 10px;
+            height: 10px;
+            background: white;
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.3; transform: scale(0.8); }
+        }
+        
+        .controls {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+        
+        .btn {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-size: 0.9em;
+        }
+        
+        .btn-primary {
+            background: #3b82f6;
+            color: white;
+        }
+        
+        .btn-primary:hover {
+            background: #2563eb;
+            transform: translateY(-2px);
+        }
+        
+        .btn-secondary {
+            background: #e2e8f0;
+            color: #475569;
+        }
+        
+        .btn-secondary:hover {
+            background: #cbd5e1;
+        }
+        
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 15px;
+            margin-bottom: 30px;
+        }
+        
+        .stat-card {
+            background: white;
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            transition: all 0.3s;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .stat-card::before {
+            content: '';
+            position: absolute;
+            left: 0;
+            top: 0;
+            bottom: 0;
+            width: 4px;
+            background: var(--color, #3b82f6);
+        }
+        
+        .stat-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 6px 20px rgba(59, 130, 246, 0.2);
+        }
+        
+        .stat-icon {
+            font-size: 2.2em;
+        }
+        
+        .stat-content {
+            flex: 1;
+        }
+        
+        .stat-value {
+            font-size: 1.8em;
+            font-weight: bold;
+            color: #1e3a8a;
+        }
+        
+        .stat-label {
+            color: #64748b;
+            font-size: 0.85em;
+            margin-top: 2px;
+        }
+        
+        .interventions-list {
+            background: white;
+            padding: 25px;
+            border-radius: 12px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        
+        .list-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+            gap: 15px;
+        }
+        
+        .list-header h2 {
+            color: #1e3a8a;
+            font-size: 1.4em;
+        }
+        
+        .filter-group {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+        
+        .filter-btn {
+            padding: 6px 14px;
+            border: 2px solid #e2e8f0;
+            background: white;
+            border-radius: 20px;
+            font-size: 0.85em;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-weight: 600;
+            color: #64748b;
+        }
+        
+        .filter-btn:hover {
+            border-color: #3b82f6;
+            color: #3b82f6;
+        }
+        
+        .filter-btn.active {
+            background: #3b82f6;
+            border-color: #3b82f6;
+            color: white;
+        }
+        
+        .interventions-container {
+            display: grid;
+            gap: 15px;
+        }
+        
+        .intervention-card {
+            background: #f8fafc;
+            border: 2px solid #e2e8f0;
+            border-radius: 10px;
+            padding: 18px;
+            transition: all 0.3s;
+            position: relative;
+        }
+        
+        .intervention-card:hover {
+            border-color: #3b82f6;
+            transform: translateX(5px);
+            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.15);
+        }
+        
+        .intervention-card.flash {
+            animation: flashAnimation 0.5s 3;
+            border-color: #10b981;
+        }
+        
+        @keyframes flashAnimation {
+            0%, 100% { background: #f8fafc; }
+            50% { background: #d1fae5; }
+        }
+        
+        .intervention-card.new-badge::after {
+            content: 'NEW';
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: #10b981;
+            color: white;
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 0.7em;
+            font-weight: bold;
+            animation: slideIn 0.5s;
+        }
+        
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateX(20px); }
+            to { opacity: 1; transform: translateX(0); }
+        }
+        
+        .intervention-header {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 12px;
+            flex-wrap: wrap;
+        }
+        
+        .badge {
+            padding: 5px 12px;
+            border-radius: 14px;
+            font-size: 0.8em;
+            font-weight: 600;
+        }
+        
+        .priority-urgente { background: #fecaca; color: #991b1b; }
+        .priority-haute { background: #fed7aa; color: #9a3412; }
+        .priority-normale { background: #bfdbfe; color: #1e3a8a; }
+        .priority-basse { background: #e2e8f0; color: #475569; }
+        
+        .status-en-cours { background: #fef3c7; color: #92400e; }
+        .status-terminé { background: #d1fae5; color: #065f46; }
+        .status-bloqué { background: #fecaca; color: #991b1b; }
+        .status-en-attente { background: #e0e7ff; color: #3730a3; }
+        
+        .intervention-body {
+            margin: 12px 0;
+            color: #475569;
+            line-height: 1.7;
+        }
+        
+        .intervention-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin: 6px 0;
+            font-size: 0.95em;
+        }
+        
+        .intervention-icon {
+            width: 20px;
+            text-align: center;
+        }
+        
+        .intervention-footer {
+            color: #94a3b8;
+            font-size: 0.8em;
+            border-top: 1px solid #e2e8f0;
+            padding-top: 10px;
+            margin-top: 12px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: #94a3b8;
+            font-size: 1.1em;
+        }
+        
+        .empty-state-icon {
+            font-size: 4em;
+            margin-bottom: 15px;
+        }
+        
+        #notifications {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 1000;
+            max-width: 400px;
+        }
+        
+        .notification {
+            background: white;
+            padding: 16px 20px;
+            border-radius: 10px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            margin-bottom: 10px;
+            opacity: 0;
+            transform: translateX(100%);
+            transition: all 0.3s;
+            border-left: 4px solid #3b82f6;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        
+        .notification.show {
+            opacity: 1;
+            transform: translateX(0);
+        }
+        
+        .notification-icon {
+            font-size: 1.5em;
+        }
+        
+        .notification-content {
+            flex: 1;
+        }
+        
+        .notification-success {
+            border-left-color: #10b981;
+        }
+        
+        .notification-error {
+            border-left-color: #ef4444;
+        }
+        
+        .notification-warning {
+            border-left-color: #f59e0b;
+        }
+        
+        .notification-info {
+            border-left-color: #3b82f6;
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #64748b;
+        }
+        
+        .spinner {
+            border: 3px solid #e2e8f0;
+            border-top: 3px solid #3b82f6;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 15px;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .config-panel {
+            background: #f1f5f9;
+            border: 2px solid #cbd5e1;
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        
+        .config-panel h3 {
+            color: #1e3a8a;
+            margin-bottom: 15px;
+        }
+        
+        .config-input {
+            width: 100%;
+            padding: 10px;
+            border: 2px solid #e2e8f0;
+            border-radius: 8px;
+            font-size: 0.9em;
+            margin-bottom: 10px;
+        }
+        
+        .config-input:focus {
+            outline: none;
+            border-color: #3b82f6;
+        }
+        
+        @media (max-width: 768px) {
+            #dashboard {
+                padding: 10px;
+            }
+            
+            .header {
+                flex-direction: column;
+                text-align: center;
+            }
+            
+            .stats-grid {
+                grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+            }
+            
+            .stat-card {
+                flex-direction: column;
+                text-align: center;
+            }
+            
+            #notifications {
+                left: 10px;
+                right: 10px;
+                max-width: none;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div id="dashboard">
+        <div class="config-panel" id="configPanel">
+            <h3>⚙️ Configuration</h3>
+            <input 
+                type="text" 
+                id="sseUrlInput" 
+                class="config-input" 
+                placeholder="URL du flux SSE (ex: https://votre-n8n.cerema.fr/webhook/sse-stream)"
+                value=""
+            />
+            <button class="btn btn-primary" onclick="saveConfig()">💾 Enregistrer et connecter</button>
+        </div>
+        
+        <div class="loading" id="loading">
+            <div class="spinner"></div>
+            <div>Chargement du dashboard...</div>
+        </div>
+    </div>
+    
+    <div id="notifications"></div>
+
+    <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
+    <script>
+        // ============================================
+        // CONFIGURATION
+        // ============================================
+        
+        let CONFIG = {
+            sseUrl: localStorage.getItem('grist_sse_url') || '',
+            soundEnabled: localStorage.getItem('grist_sound_enabled') !== 'false',
+            autoRefreshInterval: 60000
+        };
+        
+        // État de l'application
+        let gristAPI;
+        let currentTable;
+        let eventSource;
+        let interventions = [];
+        let currentFilter = 'actives';
+        let stats = {
+            total: 0,
+            enCours: 0,
+            termine: 0,
+            bloque: 0,
+            urgente: 0
+        };
+        
+        // ============================================
+        // INITIALISATION
+        // ============================================
+        
+        async function init() {
+            console.log('🚀 Initialisation Dashboard Temps Réel');
+            
+            // Vérifie si configuration existe
+            if (CONFIG.sseUrl) {
+                document.getElementById('configPanel').style.display = 'none';
+            } else {
+                document.getElementById('loading').style.display = 'none';
+                return;
+            }
+            
+            try {
+                // Connexion Grist API
+                gristAPI = window.grist;
+                await gristAPI.ready({ requiredAccess: 'read table' });
+                
+                // Récupère la table
+                currentTable = await gristAPI.selectedTable || await gristAPI.getTable();
+                
+                // Charge les données initiales
+                await loadData();
+                
+                // Cache le loading
+                document.getElementById('loading').style.display = 'none';
+                
+                // Démarre connexion SSE
+                connectSSE();
+                
+                // Fallback refresh
+                setInterval(loadData, CONFIG.autoRefreshInterval);
+                
+                // Render initial
+                renderDashboard();
+                
+            } catch (e) {
+                console.error('Erreur initialisation:', e);
+                document.getElementById('loading').innerHTML = `
+                    <div class="empty-state-icon">⚠️</div>
+                    <div>Erreur de connexion à Grist</div>
+                    <div style="font-size: 0.9em; margin-top: 10px;">${e.message}</div>
+                `;
+            }
+        }
+        
+        // ============================================
+        // CONFIGURATION
+        // ============================================
+        
+        function saveConfig() {
+            const url = document.getElementById('sseUrlInput').value.trim();
+            
+            if (!url) {
+                showNotification('❌ Veuillez entrer une URL SSE valide', 'error');
+                return;
+            }
+            
+            CONFIG.sseUrl = url;
+            localStorage.setItem('grist_sse_url', url);
+            
+            document.getElementById('configPanel').style.display = 'none';
+            document.getElementById('loading').style.display = 'block';
+            
+            showNotification('✅ Configuration enregistrée', 'success');
+            
+            setTimeout(init, 500);
+        }
+        
+        // ============================================
+        // CONNEXION SSE
+        // ============================================
+        
+        function connectSSE() {
+            if (!CONFIG.sseUrl) {
+                console.warn('Pas d\'URL SSE configurée');
+                return;
+            }
+            
+            console.log('🔌 Connexion au flux SSE...');
+            updateLiveIndicator('connecting');
+            
+            eventSource = new EventSource(CONFIG.sseUrl);
+            
+            eventSource.onopen = () => {
+                console.log('✅ Connecté au flux temps réel');
+                updateLiveIndicator('connected');
+                showNotification('🟢 Connexion temps réel activée', 'success');
+            };
+            
+            eventSource.onmessage = (event) => {
+                try {
+                    const update = JSON.parse(event.data);
+                    handleRealtimeUpdate(update);
+                } catch (e) {
+                    console.error('Erreur parsing SSE:', e);
+                }
+            };
+            
+            eventSource.onerror = (error) => {
+                console.error('❌ Erreur SSE:', error);
+                updateLiveIndicator('disconnected');
+                
+                // Reconnexion auto après 5s
+                setTimeout(() => {
+                    console.log('🔄 Reconnexion...');
+                    if (eventSource) {
+                        eventSource.close();
+                    }
+                    connectSSE();
+                }, 5000);
+            };
+        }
+        
+        function updateLiveIndicator(status) {
+            const indicator = document.getElementById('liveIndicator');
+            if (!indicator) return;
+            
+            indicator.className = `live-indicator ${status}`;
+            
+            const labels = {
+                connected: 'LIVE',
+                disconnected: 'DÉCONNECTÉ',
+                connecting: 'CONNEXION...'
+            };
+            
+            indicator.innerHTML = `
+                <span class="pulse"></span>
+                <span>${labels[status]}</span>
+            `;
+        }
+        
+        // ============================================
+        // GESTION MISES À JOUR TEMPS RÉEL
+        // ============================================
+        
+        function handleRealtimeUpdate(update) {
+            console.log('📡 Mise à jour reçue:', update);
+            
+            if (update.type === 'intervention_update') {
+                // Met à jour données locales
+                updateLocalData(update.data);
+                
+                // Re-render
+                renderDashboard();
+                
+                // Notification
+                showUpdateNotification(update.data);
+                
+                // Animation flash
+                flashRow(update.data.id);
+            }
+        }
+        
+        function updateLocalData(data) {
+            const index = interventions.findIndex(i => i.id === data.id);
+            
+            const intervention = {
+                ...data,
+                isNew: index === -1,
+                updatedAt: new Date()
+            };
+            
+            if (index !== -1) {
+                interventions[index] = intervention;
+            } else {
+                interventions.unshift(intervention);
+            }
+            
+            calculateStats();
+        }
+        
+        // ============================================
+        // CHARGEMENT DONNÉES GRIST
+        // ============================================
+        
+        async function loadData() {
+            if (!currentTable) return;
+            
+            try {
+                const records = await currentTable.fetchSelectedTable();
+                
+                interventions = records.map(r => ({
+                    id: r.id,
+                    agent: r.Agent || 'Non assigné',
+                    localisation: r.Localisation || 'Non spécifié',
+                    type: r.Type || 'Autre',
+                    statut: r.Statut || 'En attente',
+                    priorite: r.Priorite || 'Normale',
+                    commentaire: r.Commentaire || '',
+                    derniereMaj: r.Derniere_MAJ ? new Date(r.Derniere_MAJ * 1000) : new Date(),
+                    isNew: false
+                }));
+                
+                calculateStats();
+                
+                if (document.getElementById('interventionsList')) {
+                    renderDashboard();
+                }
+                
+            } catch (e) {
+                console.error('Erreur chargement données:', e);
+                showNotification('⚠️ Erreur chargement données', 'error');
+            }
+        }
+        
+        function calculateStats() {
+            stats.total = interventions.length;
+            stats.enCours = interventions.filter(i => i.statut === 'En cours').length;
+            stats.termine = interventions.filter(i => i.statut === 'Terminé').length;
+            stats.bloque = interventions.filter(i => i.statut === 'Bloqué').length;
+            stats.urgente = interventions.filter(i => i.priorite === 'Urgente').length;
+        }
+        
+        // ============================================
+        // RENDU DASHBOARD
+        // ============================================
+        
+        function renderDashboard() {
+            const container = document.getElementById('dashboard');
+            
+            container.innerHTML = `
+                <div class="header">
+                    <h1>
+                        <span>📊</span>
+                        <span>Dashboard Interventions</span>
+                    </h1>
+                    <div class="controls">
+                        <div class="live-indicator connected" id="liveIndicator">
+                            <span class="pulse"></span>
+                            <span>LIVE</span>
+                        </div>
+                        <button class="btn btn-secondary" onclick="toggleSound()">
+                            ${CONFIG.soundEnabled ? '🔔' : '🔕'}
+                        </button>
+                        <button class="btn btn-primary" onclick="loadData()">
+                            🔄 Actualiser
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="stats-grid">
+                    ${renderStatsCard('Total', stats.total, '#3b82f6', '📋')}
+                    ${renderStatsCard('En cours', stats.enCours, '#f59e0b', '🔄')}
+                    ${renderStatsCard('Terminé', stats.termine, '#10b981', '✅')}
+                    ${renderStatsCard('Bloqué', stats.bloque, '#ef4444', '🚫')}
+                    ${renderStatsCard('Urgente', stats.urgente, '#dc2626', '🚨')}
+                </div>
+                
+                <div class="interventions-list" id="interventionsList">
+                    <div class="list-header">
+                        <h2>Interventions</h2>
+                        <div class="filter-group">
+                            <button class="filter-btn ${currentFilter === 'actives' ? 'active' : ''}" onclick="setFilter('actives')">
+                                🔄 Actives
+                            </button>
+                            <button class="filter-btn ${currentFilter === 'toutes' ? 'active' : ''}" onclick="setFilter('toutes')">
+                                📋 Toutes
+                            </button>
+                            <button class="filter-btn ${currentFilter === 'urgentes' ? 'active' : ''}" onclick="setFilter('urgentes')">
+                                🚨 Urgentes
+                            </button>
+                        </div>
+                    </div>
+                    ${renderInterventionsList()}
+                </div>
+            `;
+            
+            updateLiveIndicator(eventSource && eventSource.readyState === 1 ? 'connected' : 'disconnected');
+        }
+        
+        function renderStatsCard(label, value, color, icon) {
+            return `
+                <div class="stat-card" style="--color: ${color}">
+                    <div class="stat-icon">${icon}</div>
+                    <div class="stat-content">
+                        <div class="stat-value">${value}</div>
+                        <div class="stat-label">${label}</div>
+                    </div>
+                </div>
+            `;
+        }
+        
+        function renderInterventionsList() {
+            let filtered = interventions;
+            
+            if (currentFilter === 'actives') {
+                filtered = interventions.filter(i => i.statut !== 'Terminé');
+            } else if (currentFilter === 'urgentes') {
+                filtered = interventions.filter(i => i.priorite === 'Urgente');
+            }
+            
+            filtered = filtered.sort((a, b) => {
+                const priorityOrder = { 'Urgente': 0, 'Haute': 1, 'Normale': 2, 'Basse': 3 };
+                return priorityOrder[a.priorite] - priorityOrder[b.priorite];
+            });
+            
+            if (filtered.length === 0) {
+                return `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">✨</div>
+                        <div>Aucune intervention ${currentFilter}</div>
+                    </div>
+                `;
+            }
+            
+            return `
+                <div class="interventions-container">
+                    ${filtered.map(i => renderInterventionCard(i)).join('')}
+                </div>
+            `;
+        }
+        
+        function renderInterventionCard(i) {
+            return `
+                <div class="intervention-card ${i.isNew ? 'new-badge' : ''}" data-id="${i.id}">
+                    <div class="intervention-header">
+                        <span class="badge priority-${normalizeClass(i.priorite)}">${i.priorite}</span>
+                        <span class="badge status-${normalizeClass(i.statut)}">${i.statut}</span>
+                    </div>
+                    <div class="intervention-body">
+                        <div class="intervention-row">
+                            <span class="intervention-icon">👤</span>
+                            <strong>${i.agent}</strong>
+                        </div>
+                        <div class="intervention-row">
+                            <span class="intervention-icon">📍</span>
+                            ${i.localisation}
+                        </div>
+                        <div class="intervention-row">
+                            <span class="intervention-icon">🔧</span>
+                            ${i.type}
+                        </div>
+                        ${i.commentaire ? `
+                            <div class="intervention-row">
+                                <span class="intervention-icon">💬</span>
+                                ${i.commentaire}
+                            </div>
+                        ` : ''}
+                    </div>
+                    <div class="intervention-footer">
+                        <small>${formatTime(i.derniereMaj)}</small>
+                    </div>
+                </div>
+            `;
+        }
+        
+        // ============================================
+        // FILTRES
+        // ============================================
+        
+        function setFilter(filter) {
+            currentFilter = filter;
+            renderDashboard();
+        }
+        
+        // ============================================
+        // NOTIFICATIONS
+        // ============================================
+        
+        function showUpdateNotification(data) {
+            const message = `${data.agent} a mis à jour "${data.localisation}" → ${data.statut}`;
+            showNotification(message, getNotificationTypeFromStatus(data.statut));
+            
+            if (CONFIG.soundEnabled) {
+                playNotificationSound();
+            }
+        }
+        
+        function showNotification(message, type = 'info') {
+            const notifContainer = document.getElementById('notifications');
+            const notif = document.createElement('div');
+            
+            const icons = {
+                success: '✅',
+                error: '❌',
+                warning: '⚠️',
+                info: 'ℹ️'
+            };
+            
+            notif.className = `notification notification-${type}`;
+            notif.innerHTML = `
+                <div class="notification-icon">${icons[type]}</div>
+                <div class="notification-content">${message}</div>
+            `;
+            
+            notifContainer.appendChild(notif);
+            setTimeout(() => notif.classList.add('show'), 10);
+            
+            setTimeout(() => {
+                notif.classList.remove('show');
+                setTimeout(() => notif.remove(), 300);
+            }, 5000);
+        }
+        
+        function getNotificationTypeFromStatus(statut) {
+            const map = {
+                'Terminé': 'success',
+                'Bloqué': 'error',
+                'En cours': 'info',
+                'En attente': 'warning'
+            };
+            return map[statut] || 'info';
+        }
+        
+        function playNotificationSound() {
+            const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            const oscillator = audioContext.createOscillator();
+            const gainNode = audioContext.createGain();
+            
+            oscillator.connect(gainNode);
+            gainNode.connect(audioContext.destination);
+            
+            oscillator.frequency.value = 800;
+            oscillator.type = 'sine';
+            
+            gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+            gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.3);
+            
+            oscillator.start(audioContext.currentTime);
+            oscillator.stop(audioContext.currentTime + 0.3);
+        }
+        
+        function toggleSound() {
+            CONFIG.soundEnabled = !CONFIG.soundEnabled;
+            localStorage.setItem('grist_sound_enabled', CONFIG.soundEnabled);
+            showNotification(
+                CONFIG.soundEnabled ? '🔔 Notifications sonores activées' : '🔕 Notifications sonores désactivées',
+                'info'
+            );
+            renderDashboard();
+        }
+        
+        // ============================================
+        // ANIMATIONS
+        // ============================================
+        
+        function flashRow(id) {
+            setTimeout(() => {
+                const row = document.querySelector(`[data-id="${id}"]`);
+                if (row) {
+                    row.classList.add('flash');
+                    setTimeout(() => {
+                        row.classList.remove('flash');
+                        row.classList.remove('new-badge');
+                    }, 2000);
+                }
+            }, 100);
+        }
+        
+        // ============================================
+        // UTILS
+        // ============================================
+        
+        function formatTime(date) {
+            if (!date) return 'Jamais';
+            
+            const now = new Date();
+            const diff = Math.floor((now - date) / 1000);
+            
+            if (diff < 10) return 'À l\'instant';
+            if (diff < 60) return `Il y a ${diff}s`;
+            if (diff < 3600) return `Il y a ${Math.floor(diff / 60)} min`;
+            if (diff < 86400) return `Il y a ${Math.floor(diff / 3600)} h`;
+            
+            return date.toLocaleDateString('fr-FR', {
+                day: '2-digit',
+                month: '2-digit',
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+        }
+        
+        function normalizeClass(str) {
+            return str.toLowerCase()
+                .normalize("NFD")
+                .replace(/[\u0300-\u036f]/g, "")
+                .replace(/\s+/g, '-');
+        }
+        
+        // ============================================
+        // DÉMARRAGE
+        // ============================================
+        
+        // Charge la config au démarrage
+        if (CONFIG.sseUrl) {
+            document.getElementById('sseUrlInput').value = CONFIG.sseUrl;
+        }
+        
+        // Init quand ready
+        if (window.grist) {
+            init();
+        } else {
+            document.addEventListener('DOMContentLoaded', init);
+        }
+    </script>
+</body>
+</html>
