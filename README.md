@@ -45,50 +45,57 @@ Ce système permet de **synchroniser en temps réel** les modifications d'une ta
     │   GRIST     │                      │   GRIST     │
     │   Table     │◄─────────────────────┤   Widget    │
     │Interventions│  Lit données init    │  Dashboard  │
-    └──────┬──────┘                      └──────▲──────┘
+    └──────┬──────┘   (API columnar)     └──────▲──────┘
            │                                     │
            │ Webhook automatique                 │ SSE connexion
            │ POST /grist-realtime                │ GET /sse-stream
            ▼                                     │
-    ┌────────────────────────────────────────────┴──────┐
-    │                    n8n WORKFLOW                    │
-    │  ┌─────────────────────────────────────────────┐  │
-    │  │ 1. Reçoit webhook Grist                     │  │
-    │  │ 2. Valide payload                           │  │
-    │  │ 3. Prépare message broadcast                │  │
-    │  │ 4. Publie sur Redis Pub/Sub                 │  │
-    │  │ 5. Cache dans Redis (24h)                   │  │
-    │  │ 6. Si urgente → Notif Tchap                 │  │
-    │  │ 7. Log metrics                              │  │
-    │  └─────────────────────────────────────────────┘  │
+    ┌──────────────────────────────────┐         │
+    │         n8n WORKFLOW             │         │
+    │  ┌───────────────────────────┐   │         │
+    │  │ 1. Reçoit webhook Grist   │   │         │
+    │  │ 2. Valide payload         │   │         │
+    │  │ 3. Prépare message        │   │         │
+    │  │ 4. HTTP POST /publish     │   │         │
+    │  │ 5. HTTP POST /setex       │   │         │
+    │  │ 6. Si urgente → Tchap     │   │         │
+    │  └──────────┬────────────────┘   │         │
+    └─────────────┼──────────────────────┘         │
+                  │ HTTP POST                      │
+                  ▼                                │
+    ┌─────────────────────────────────────────────┴──────┐
+    │        REDIS SSE BRIDGE SERVER (Node.js)           │
+    │                                                     │
+    │  ┌──────────────────────────────────────────────┐  │
+    │  │  Endpoints HTTP:                             │  │
+    │  │  • POST /redis/publish  ← appelé par n8n     │  │
+    │  │  • POST /redis/setex    ← appelé par n8n     │  │
+    │  │  • GET /sse-stream      ← widgets connectés  │  │
+    │  │  • GET /health          ← monitoring         │  │
+    │  └──────────────────────────────────────────────┘  │
     │                         │                          │
     │                         ▼                          │
-    │  ┌─────────────────────────────────────────────┐  │
+    │  ┌──────────────────────────────────────────────┐  │
     │  │         REDIS PUB/SUB                        │  │
-    │  │  • Channel: grist-realtime-interventions    │  │
-    │  │  • Subscribers: Tous widgets connectés      │  │
-    │  │  • TTL cache: 24h                           │  │
-    │  └─────────────────────────────────────────────┘  │
+    │  │  • Channel: grist-realtime-interventions     │  │
+    │  │  • Publisher: redis-sse-bridge               │  │
+    │  │  • Subscriber: redis-sse-bridge              │  │
+    │  │  • Cache TTL: 24h                            │  │
+    │  └──────────────────────────────────────────────┘  │
     │                         │                          │
-    │                         ▼                          │
-    │  ┌─────────────────────────────────────────────┐  │
-    │  │         SSE STREAM ENDPOINT                  │  │
-    │  │  • Subscribe Redis                          │  │
-    │  │  • Format SSE message                       │  │
-    │  │  • Stream vers tous clients                 │  │
-    │  └─────────────────────────────────────────────┘  │
-    └────────────────────────────────────────────────────┘
-                           │
-                           │ event: message
-                           │ data: {...}
-                           ▼
-                 [ Tous les widgets ]
-                      │
-                      ├─ Mise à jour données locales
-                      ├─ Re-render interface
-                      ├─ Animation flash vert
-                      ├─ Notification visuelle
-                      └─ Son (si activé)
+    │              Broadcast to all SSE clients          │
+    └─────────────────────────┬──────────────────────────┘
+                              │
+                              │ data: {...}\n\n
+                              │ (SSE format)
+                              ▼
+                    [ Tous les widgets ]
+                         │
+                         ├─ Mise à jour données locales
+                         ├─ Re-render interface
+                         ├─ Animation flash vert
+                         ├─ Notification visuelle
+                         └─ Son (si activé)
 
 
 ┌─────────────────────────────────────────────────────────────────────┐
@@ -112,16 +119,24 @@ T+300ms Interface mise à jour               ~50ms
 │                      COMPOSANTS & VERSIONS                          │
 └─────────────────────────────────────────────────────────────────────┘
 
-┌─────────────┬──────────────┬────────────────────────────────────┐
-│ Composant   │ Version      │ Rôle                               │
-├─────────────┼──────────────┼────────────────────────────────────┤
-│ Grist       │ Latest       │ Base de données + Webhooks         │
-│ n8n         │ 1.0+         │ Orchestration workflows            │
-│ Redis       │ 7.0+         │ Pub/Sub + Cache                    │
-│ Nginx       │ 1.18+        │ Hébergement widget + Reverse proxy │
-│ SSE         │ HTML5        │ Push serveur → client temps réel   │
-│ JavaScript  │ ES6+         │ Widget interactif                  │
-└─────────────┴──────────────┴────────────────────────────────────┘
+┌─────────────────┬──────────────┬────────────────────────────────┐
+│ Composant       │ Version      │ Rôle                           │
+├─────────────────┼──────────────┼────────────────────────────────┤
+│ Grist           │ Latest       │ Base de données + Webhooks     │
+│ n8n             │ 1.0+         │ Orchestration workflows        │
+│ Redis           │ 7.0+         │ Pub/Sub + Cache (24h TTL)      │
+│ Node.js         │ 18.0+        │ Runtime pour SSE bridge        │
+│ redis-sse-bridge│ 1.0.0        │ Serveur SSE + Redis Pub/Sub    │
+│ Express         │ 4.18+        │ Framework HTTP (SSE bridge)    │
+│ Nginx           │ 1.18+        │ Reverse proxy (HTTPS)          │
+│ GitHub Pages    │ -            │ Hébergement widget statique    │
+│ JavaScript      │ ES6+         │ Widget interactif              │
+└─────────────────┴──────────────┴────────────────────────────────┘
+
+**Architecture clé**: redis-sse-bridge.js est le composant CENTRAL qui connecte n8n,
+Redis et les widgets. Il contourne les limitations des nodes Redis de n8n en exposant
+une API HTTP que n8n peut appeler, tout en maintenant des connexions SSE longue durée
+vers les widgets.
 ```
 
 ---
@@ -129,51 +144,102 @@ T+300ms Interface mise à jour               ~50ms
 ## 📦 Contenu du Package
 
 ```
-grist-realtime-system/
+Broadcapps/
 │
-├── 📄 README.md                              ← Ce fichier
-├── 📄 DEPLOIEMENT-RAPIDE.md                  ← Guide installation 15 min
+├── 📄 README.md                                    ← Ce fichier
+├── 📄 CLAUDE.md                                    ← Guide Claude Code
+├── 📄 INSTALLATION-SSE-SERVER.md                   ← Installation SSE bridge
+├── 📄 WORKFLOWS-N8N-GUIDE.md                       ← Guide workflows n8n
+├── 📄 PROCEDURE-DEPLOIEMENT-GITHUB-PAGES.md        ← Déploiement GitHub Pages
 │
-├── 🎨 grist-realtime-dashboard-widget.html   ← Widget Grist autonome
-├── ⚙️ grist-realtime-n8n-workflow.json       ← Workflow n8n à importer
-├── 🚀 install-grist-realtime.sh              ← Script auto-installation
+├── 🎨 grist-realtime-dashboard-widget.html         ← Widget Grist (GitHub Pages)
+├── 🎨 index.html                                   ← Page d'accueil GitHub Pages
 │
-├── 📚 grist-realtime-sync-guide.md           ← Documentation complète
-└── 🖼️ grist-webhooks-architecture.html       ← Visualisation interactive
+├── 🔧 redis-sse-bridge.js                          ← Serveur SSE Node.js ⭐ NOUVEAU
+├── 📦 package.json                                 ← Dépendances Node.js ⭐ NOUVEAU
+│
+├── ⚙️ n8n-workflow-1-grist-to-sse-server.json      ← Workflow principal
+├── ⚙️ n8n-workflow-2-api-interventions.json        ← API polling fallback
+│
+└── 📚 Documentation/
+    ├── grist-realtime-sync-guide.md
+    └── DEPLOIEMENT-RAPIDE.md
 ```
+
+**Nouveauté v2.0** : redis-sse-bridge.js remplace l'approche directe n8n+Redis pour contourner
+les limitations des nodes Redis de n8n (pas de support `subscribe`).
 
 ---
 
 ## ⚡ Installation Express
 
-### Méthode 1 : Script Automatique (Recommandé)
+### Prérequis
+
+- VPS avec Ubuntu/Debian
+- Redis installé et actif
+- n8n installé et actif
+- Node.js ≥18.0.0
+- Accès root (sudo)
+
+### Installation Complète
 
 ```bash
-# 1. Téléchargez le package
-git clone https://github.com/cerema/grist-realtime-system.git
-cd grist-realtime-system
+# 1. Installer Redis
+sudo apt update
+sudo apt install redis-server
+sudo systemctl enable redis-server
+redis-cli ping  # Doit retourner PONG
 
-# 2. Lancez l'installation automatique
-sudo chmod +x install-grist-realtime.sh
-sudo ./install-grist-realtime.sh
+# 2. Installer Node.js 18+
+node --version  # Vérifier version
+# Si < 18:
+curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+sudo apt install -y nodejs
 
-# 3. Copiez le widget
-sudo cp grist-realtime-dashboard-widget.html /var/www/grist-widgets/
+# 3. Cloner le projet
+cd /opt
+git clone https://github.com/nic01asFr/Broadcapps.git
+cd Broadcapps
 
-# 4. Importez le workflow n8n
-# → Connectez-vous à n8n
-# → Workflows → Import from File → Sélectionnez grist-realtime-n8n-workflow.json
+# 4. Installer dépendances Node.js
+npm install
 
-# 5. Testez l'installation
-grist-status
-grist-test
+# 5. Configurer service SSE bridge
+sudo nano /etc/systemd/system/redis-sse-bridge.service
+# Copier le contenu depuis INSTALLATION-SSE-SERVER.md
+
+# 6. Activer et démarrer le service
+sudo systemctl daemon-reload
+sudo systemctl enable redis-sse-bridge
+sudo systemctl start redis-sse-bridge
+sudo systemctl status redis-sse-bridge  # Doit être "active (running)"
+
+# 7. Tester le serveur SSE
+curl http://localhost:3001/health
+# Doit retourner: {"status":"healthy",...}
+
+# 8. Importer workflow n8n
+# → n8n UI → Workflows → Import
+# → Sélectionner n8n-workflow-1-grist-to-sse-server.json
+# → Activer le workflow
+
+# 9. Configurer webhook Grist
+# → Grist → Document Settings → Webhooks
+# → URL: https://votre-n8n.cerema.fr/webhook/grist-realtime
+# → Events: add, update
+
+# 10. Configurer widget
+# Le widget est déjà déployé sur: https://nic01asfr.github.io/Broadcapps/grist-realtime-dashboard-widget.html
+# Ou hébergez-le vous-même via Nginx
 
 # ✅ Installation terminée !
 ```
 
-### Méthode 2 : Installation Manuelle
+### Guides Détaillés
 
-Suivez le guide détaillé : **[DEPLOIEMENT-RAPIDE.md](DEPLOIEMENT-RAPIDE.md)**
+- **[INSTALLATION-SSE-SERVER.md](INSTALLATION-SSE-SERVER.md)** : Installation serveur SSE bridge
+- **[WORKFLOWS-N8N-GUIDE.md](WORKFLOWS-N8N-GUIDE.md)** : Configuration workflows n8n
+- **[PROCEDURE-DEPLOIEMENT-GITHUB-PAGES.md](PROCEDURE-DEPLOIEMENT-GITHUB-PAGES.md)** : Hébergement widget
 
 ---
 
@@ -238,29 +304,51 @@ curl -X POST https://votre-n8n.cerema.fr/webhook/grist-realtime \
 # ✅ Attendu : {"success":true,"message":"Broadcast envoyé"}
 ```
 
-### Test 2 : Connexion SSE
+### Test 2 : Connexion SSE (redis-sse-bridge)
 
 ```bash
-curl -N https://votre-n8n.cerema.fr/webhook/sse-stream
+curl -N http://localhost:3001/sse-stream
 
-# ✅ Attendu : Connexion maintenue + stream events
+# ✅ Attendu : Connexion maintenue + heartbeats
+# data: {"type":"connected",...}
+#
+# : heartbeat
+#
+# : heartbeat
 ```
 
-### Test 3 : Health Check
+### Test 3 : Health Check (redis-sse-bridge)
 
 ```bash
-curl https://votre-n8n.cerema.fr/webhook/health
+curl http://localhost:3001/health
 
-# ✅ Attendu : {"status":"healthy",...}
+# ✅ Attendu :
+# {"status":"healthy","uptime":123.45,"clients":0,"redis":"connected",...}
 ```
 
-### Test 4 : Flux Complet
+### Test 4 : Publication message (simuler n8n)
+
+```bash
+curl -X POST http://localhost:3001/redis/publish \
+  -H "Content-Type: application/json" \
+  -d '{
+    "channel": "grist-realtime-interventions",
+    "message": {"type":"test","data":{"id":"test-123","agent":"Test"}}
+  }'
+
+# ✅ Attendu : {"success":true,"channel":"grist-realtime-interventions",...}
+```
+
+### Test 5 : Flux Complet End-to-End
 
 1. Ouvrez le widget dans Grist
-2. Vérifiez : Indicateur "LIVE" vert 🟢
-3. Ajoutez une ligne dans la table
-4. Observez : Mise à jour instantanée du widget (~300-500ms)
-5. Vérifiez : Animation flash + notification
+2. Configurez l'URL SSE: `http://votre-server:3001/sse-stream` (ou via Nginx HTTPS)
+3. Vérifiez : Indicateur "LIVE" vert 🟢
+4. Vérifiez : Clients connectés > 0: `curl localhost:3001/health | jq '.clients'`
+5. Ajoutez une ligne dans la table Grist
+6. Observez : Mise à jour instantanée du widget (~300-500ms)
+7. Vérifiez : Animation flash + notification visuelle/sonore
+8. Vérifiez logs: `sudo journalctl -u redis-sse-bridge -f`
 
 ---
 
@@ -269,22 +357,28 @@ curl https://votre-n8n.cerema.fr/webhook/health
 ### Commandes Utiles
 
 ```bash
-# Statut du système
-grist-status
+# Statut serveur SSE bridge
+sudo systemctl status redis-sse-bridge
+curl http://localhost:3001/health | jq
 
-# Lancer les tests
-grist-test
+# Logs temps réel SSE bridge
+sudo journalctl -u redis-sse-bridge -f
+sudo journalctl -u redis-sse-bridge -n 100        # Dernières 100 lignes
+sudo journalctl -u redis-sse-bridge --since today # Logs aujourd'hui
 
-# Logs temps réel
-grist-logs redis      # Redis logs
-grist-logs nginx      # Nginx access logs
-grist-logs nginx-error # Nginx error logs
+# Nombre de clients connectés
+curl http://localhost:3001/health | jq '.clients'
 
 # Métriques Redis
 redis-cli info stats
+redis-cli info memory
+redis-cli KEYS "intervention:*"  # Voir interventions en cache
 
 # Connexions SSE actives
-netstat -an | grep :80 | grep ESTABLISHED | wc -l
+netstat -an | grep :3001 | grep ESTABLISHED | wc -l
+
+# CPU et mémoire du serveur SSE
+ps aux | grep redis-sse-bridge
 ```
 
 ### Dashboard n8n
@@ -597,18 +691,37 @@ Développé par **CEREMA Méditerranée** - Groupe Ingénierie de la Donnée et 
 
 ## 📅 Changelog
 
+### Version 2.0.0 (2024-11-18) - ARCHITECTURE MAJEURE
+
+**Breaking Changes**
+- 🔄 **Nouvelle architecture avec redis-sse-bridge.js** : Serveur Node.js séparé
+- 🔄 **Migration workflows n8n** : Utilisation HTTP au lieu de nodes Redis
+- 🔄 **Widget sur GitHub Pages** : https://nic01asfr.github.io/Broadcapps/
+
+**Nouvelles Fonctionnalités**
+- ✨ **redis-sse-bridge.js** : Serveur SSE + Redis Pub/Sub (Node.js + Express)
+- ✨ **API HTTP pour n8n** : Endpoints /redis/publish, /redis/setex, /health
+- ✨ **Support columnar data** : Parsing correct du format API Grist
+- ✨ **Service systemd** : redis-sse-bridge installable comme service
+- ✨ **Nginx reverse proxy** : Configuration HTTPS pour SSE endpoint
+- ✨ **Documentation complète** : INSTALLATION-SSE-SERVER.md, WORKFLOWS-N8N-GUIDE.md
+
+**Pourquoi cette v2.0 ?**
+- ❌ n8n Redis nodes ne supportent pas `subscribe` ou `executeCommand`
+- ✅ HTTP bridge contourne cette limitation
+- ✅ Maintient connexions SSE longue durée impossibles dans n8n
+- ✅ Architecture plus robuste et scalable
+
 ### Version 1.0.0 (2024-11-17)
 
 **Initial Release**
 - ✨ Dashboard temps réel fonctionnel
-- ✨ Workflow n8n complet
-- ✨ Script installation automatique
+- ✨ Workflow n8n initial (tentative avec Redis nodes)
 - ✨ Documentation complète
 - ✨ Intégration Tchap
-- ✨ Support Redis Pub/Sub
-- ✨ Tests unitaires
+- ⚠️ Limitation découverte : n8n Redis nodes incomplets
 
-### Roadmap Version 2.0
+### Roadmap Version 3.0
 
 - [ ] Carte OpenStreetMap interactive
 - [ ] Timeline historique modifications
@@ -618,6 +731,7 @@ Développé par **CEREMA Méditerranée** - Groupe Ingénierie de la Donnée et 
 - [ ] Application mobile (PWA)
 - [ ] Mode hors-ligne avec sync
 - [ ] Multi-tenancy support
+- [ ] Redis Cluster pour haute disponibilité
 
 ---
 
