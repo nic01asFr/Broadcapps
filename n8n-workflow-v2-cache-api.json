@@ -1,0 +1,202 @@
+{
+  "name": "Grist Realtime v2 - Cache (API GET)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "interventions-v2",
+        "options": {
+          "rawBody": false
+        },
+        "responseMode": "responseNode"
+      },
+      "id": "webhook-api-v2",
+      "name": "Webhook API GET",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "operation": "keys",
+        "pattern": "intervention:*"
+      },
+      "id": "redis-keys-v2",
+      "name": "Redis KEYS",
+      "type": "n8n-nodes-base.redis",
+      "typeVersion": 1,
+      "position": [450, 300],
+      "credentials": {
+        "redis": {
+          "id": "1",
+          "name": "Redis CEREMA"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "batchSize": 1,
+        "options": {}
+      },
+      "id": "split-keys-v2",
+      "name": "Split Keys",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 1,
+      "position": [650, 300]
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "key": "={{ $json.key }}"
+      },
+      "id": "redis-get-v2",
+      "name": "Redis GET",
+      "type": "n8n-nodes-base.redis",
+      "typeVersion": 1,
+      "position": [850, 300],
+      "credentials": {
+        "redis": {
+          "id": "1",
+          "name": "Redis CEREMA"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "functionCode": "// Parse Redis value and add ID from key\nconst data = JSON.parse($input.item.json.value);\nconst id = $input.item.json.key.replace('intervention:', '');\n\nreturn {\n  json: {\n    id: id,\n    ...data\n  }\n};"
+      },
+      "id": "parse-data-v2",
+      "name": "Parse Data",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [1050, 300]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Fonction de tri par priorité\nconst priorityOrder = {\n  'Urgente': 1,\n  'Haute': 2,\n  'Normale': 3,\n  'Basse': 4\n};\n\nconst items = $input.all();\n\n// Trier\nconst sorted = items.sort((a, b) => {\n  const priorityA = priorityOrder[a.json.priorite] || 5;\n  const priorityB = priorityOrder[b.json.priorite] || 5;\n  return priorityA - priorityB;\n});\n\nreturn sorted;"
+      },
+      "id": "sort-by-priority-v2",
+      "name": "Sort by Priority",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [1250, 300]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Access-Control-Allow-Origin",
+                "value": "*"
+              },
+              {
+                "name": "Access-Control-Allow-Methods",
+                "value": "GET, OPTIONS"
+              },
+              {
+                "name": "Cache-Control",
+                "value": "no-cache"
+              }
+            ]
+          }
+        }
+      },
+      "id": "respond-json-v2",
+      "name": "Response JSON",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1450, 300]
+    }
+  ],
+  "connections": {
+    "Webhook API GET": {
+      "main": [
+        [
+          {
+            "node": "Redis KEYS",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Redis KEYS": {
+      "main": [
+        [
+          {
+            "node": "Split Keys",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Keys": {
+      "main": [
+        [
+          {
+            "node": "Redis GET",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Redis GET": {
+      "main": [
+        [
+          {
+            "node": "Parse Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Data": {
+      "main": [
+        [
+          {
+            "node": "Split Keys",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Keys": {
+      "main": [
+        null,
+        [
+          {
+            "node": "Sort by Priority",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sort by Priority": {
+      "main": [
+        [
+          {
+            "node": "Response JSON",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {},
+  "versionId": "v2-cache-api",
+  "meta": {
+    "instanceId": "cerema-grist-realtime-v2-cache"
+  },
+  "id": "v2-cache-api",
+  "tags": []
+}

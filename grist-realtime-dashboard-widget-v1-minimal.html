@@ -1,0 +1,559 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard Interventions - v1 Minimal</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 20px;
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        .header {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .header h1 {
+            font-size: 24px;
+            color: #2d3748;
+        }
+
+        .version-badge {
+            background: #48bb78;
+            color: white;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: bold;
+        }
+
+        .status-indicator {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .status-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+        }
+
+        .status-dot.polling {
+            background: #4299e1;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .stat-card {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+
+        .stat-card h3 {
+            font-size: 14px;
+            color: #718096;
+            margin-bottom: 5px;
+        }
+
+        .stat-card .value {
+            font-size: 32px;
+            font-weight: bold;
+            color: #2d3748;
+        }
+
+        .filters {
+            background: white;
+            padding: 15px;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+            display: flex;
+            gap: 10px;
+        }
+
+        .filter-btn {
+            padding: 10px 20px;
+            border: 2px solid #e2e8f0;
+            background: white;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 500;
+            transition: all 0.3s;
+        }
+
+        .filter-btn:hover {
+            border-color: #667eea;
+            color: #667eea;
+        }
+
+        .filter-btn.active {
+            background: #667eea;
+            color: white;
+            border-color: #667eea;
+        }
+
+        .interventions-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+            gap: 15px;
+        }
+
+        .intervention-card {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            border-left: 4px solid #cbd5e0;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .intervention-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 12px rgba(0,0,0,0.15);
+        }
+
+        .intervention-card.urgente {
+            border-left-color: #f56565;
+        }
+
+        .intervention-card.haute {
+            border-left-color: #ed8936;
+        }
+
+        .intervention-card.normale {
+            border-left-color: #4299e1;
+        }
+
+        .intervention-card.basse {
+            border-left-color: #48bb78;
+        }
+
+        .intervention-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: start;
+            margin-bottom: 15px;
+        }
+
+        .intervention-id {
+            font-size: 12px;
+            color: #718096;
+        }
+
+        .priority-badge {
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+
+        .priority-urgente {
+            background: #fed7d7;
+            color: #c53030;
+        }
+
+        .priority-haute {
+            background: #feebc8;
+            color: #c05621;
+        }
+
+        .priority-normale {
+            background: #bee3f8;
+            color: #2c5282;
+        }
+
+        .priority-basse {
+            background: #c6f6d5;
+            color: #22543d;
+        }
+
+        .intervention-field {
+            margin-bottom: 10px;
+        }
+
+        .intervention-field label {
+            font-size: 12px;
+            color: #718096;
+            display: block;
+            margin-bottom: 3px;
+        }
+
+        .intervention-field value {
+            font-size: 14px;
+            color: #2d3748;
+            font-weight: 500;
+        }
+
+        .status-badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+
+        .status-attente {
+            background: #fef5e7;
+            color: #d97706;
+        }
+
+        .status-cours {
+            background: #dbeafe;
+            color: #1e40af;
+        }
+
+        .status-termine {
+            background: #d1fae5;
+            color: #065f46;
+        }
+
+        .status-bloque {
+            background: #fee2e2;
+            color: #991b1b;
+        }
+
+        .notification {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: white;
+            padding: 15px 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+            display: none;
+            animation: slideIn 0.3s ease;
+            z-index: 1000;
+        }
+
+        @keyframes slideIn {
+            from {
+                transform: translateX(400px);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+
+        .notification.show {
+            display: block;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: white;
+            font-size: 18px;
+        }
+
+        .last-update {
+            font-size: 12px;
+            color: #a0aec0;
+            margin-top: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div>
+                <h1>🚨 Dashboard Interventions - CEREMA</h1>
+                <div class="last-update" id="lastUpdate">Dernière mise à jour : jamais</div>
+            </div>
+            <div style="display: flex; align-items: center; gap: 15px;">
+                <div class="version-badge">v1 MINIMAL</div>
+                <div class="status-indicator">
+                    <div class="status-dot polling"></div>
+                    <span>Polling 30s</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="stats" id="stats">
+            <div class="stat-card">
+                <h3>Total</h3>
+                <div class="value" id="statTotal">0</div>
+            </div>
+            <div class="stat-card">
+                <h3>En cours</h3>
+                <div class="value" id="statEnCours">0</div>
+            </div>
+            <div class="stat-card">
+                <h3>Terminées</h3>
+                <div class="value" id="statTermine">0</div>
+            </div>
+            <div class="stat-card">
+                <h3>Urgentes</h3>
+                <div class="value" id="statUrgentes">0</div>
+            </div>
+        </div>
+
+        <div class="filters">
+            <button class="filter-btn active" data-filter="actives">Actives</button>
+            <button class="filter-btn" data-filter="all">Toutes</button>
+            <button class="filter-btn" data-filter="urgentes">Urgentes</button>
+        </div>
+
+        <div class="interventions-grid" id="interventionsGrid">
+            <div class="loading">Chargement des données...</div>
+        </div>
+    </div>
+
+    <div class="notification" id="notification"></div>
+
+    <script type="module">
+        let gristAPI;
+        let interventions = [];
+        let currentFilter = 'actives';
+        let pollingInterval;
+        const POLL_INTERVAL_MS = 30000; // 30 secondes
+
+        // Initialisation
+        async function init() {
+            console.log('🚀 Initialisation widget v1 minimal...');
+
+            // Connexion à Grist
+            await grist.ready({
+                requiredAccess: 'read table',
+                columns: [
+                    {name: 'ID', optional: false},
+                    {name: 'Agent', optional: false},
+                    {name: 'Localisation', optional: false},
+                    {name: 'Type', optional: false},
+                    {name: 'Statut', optional: false},
+                    {name: 'Priorite', optional: false},
+                    {name: 'Commentaire', optional: true}
+                ]
+            });
+
+            gristAPI = grist.selectedTable;
+
+            // Premier chargement
+            await loadData();
+
+            // Démarrer le polling
+            startPolling();
+
+            // Event listeners pour filtres
+            document.querySelectorAll('.filter-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+                    e.target.classList.add('active');
+                    currentFilter = e.target.dataset.filter;
+                    renderDashboard();
+                });
+            });
+
+            console.log('✅ Widget initialisé');
+        }
+
+        // Chargement des données depuis Grist
+        async function loadData() {
+            try {
+                console.log('📥 Chargement données depuis Grist...');
+                const data = await gristAPI.fetchSelectedTable();
+
+                // Parse columnar format
+                const length = data.id.length;
+                const newInterventions = [];
+
+                for (let i = 0; i < length; i++) {
+                    newInterventions.push({
+                        id: data.id[i],
+                        gristId: data.ID?.[i] || `INT-${data.id[i]}`,
+                        agent: data.Agent?.[i] || 'Non assigné',
+                        localisation: data.Localisation?.[i] || 'Non spécifié',
+                        type: data.Type?.[i] || 'Autre',
+                        statut: data.Statut?.[i] || 'En attente',
+                        priorite: data.Priorite?.[i] || 'Normale',
+                        commentaire: data.Commentaire?.[i] || ''
+                    });
+                }
+
+                // Détecter changements
+                const hasChanges = detectChanges(interventions, newInterventions);
+
+                if (hasChanges && interventions.length > 0) {
+                    showNotification(`📊 ${newInterventions.length - interventions.length} nouvelle(s) intervention(s)`);
+                }
+
+                interventions = newInterventions;
+                renderDashboard();
+                updateLastUpdate();
+
+                console.log(`✅ ${interventions.length} interventions chargées`);
+            } catch (error) {
+                console.error('❌ Erreur chargement:', error);
+                showNotification('⚠️ Erreur de chargement', 'error');
+            }
+        }
+
+        // Détection changements
+        function detectChanges(oldData, newData) {
+            if (oldData.length !== newData.length) return true;
+
+            for (let i = 0; i < newData.length; i++) {
+                const newItem = newData[i];
+                const oldItem = oldData.find(item => item.id === newItem.id);
+
+                if (!oldItem) return true;
+                if (oldItem.statut !== newItem.statut) return true;
+                if (oldItem.priorite !== newItem.priorite) return true;
+            }
+
+            return false;
+        }
+
+        // Polling
+        function startPolling() {
+            console.log(`🔄 Démarrage polling (intervalle: ${POLL_INTERVAL_MS/1000}s)`);
+
+            pollingInterval = setInterval(async () => {
+                console.log('🔄 Polling...');
+                await loadData();
+            }, POLL_INTERVAL_MS);
+        }
+
+        // Mise à jour timestamp
+        function updateLastUpdate() {
+            const now = new Date();
+            document.getElementById('lastUpdate').textContent =
+                `Dernière mise à jour : ${now.toLocaleTimeString('fr-FR')}`;
+        }
+
+        // Rendu dashboard
+        function renderDashboard() {
+            updateStats();
+            renderInterventions();
+        }
+
+        // Stats
+        function updateStats() {
+            const total = interventions.length;
+            const enCours = interventions.filter(i => i.statut === 'En cours').length;
+            const termine = interventions.filter(i => i.statut === 'Terminé').length;
+            const urgentes = interventions.filter(i => i.priorite === 'Urgente').length;
+
+            document.getElementById('statTotal').textContent = total;
+            document.getElementById('statEnCours').textContent = enCours;
+            document.getElementById('statTermine').textContent = termine;
+            document.getElementById('statUrgentes').textContent = urgentes;
+        }
+
+        // Filtrage
+        function filterInterventions() {
+            switch(currentFilter) {
+                case 'actives':
+                    return interventions.filter(i => i.statut !== 'Terminé');
+                case 'urgentes':
+                    return interventions.filter(i => i.priorite === 'Urgente');
+                case 'all':
+                default:
+                    return interventions;
+            }
+        }
+
+        // Rendu interventions
+        function renderInterventions() {
+            const grid = document.getElementById('interventionsGrid');
+            const filtered = filterInterventions();
+
+            if (filtered.length === 0) {
+                grid.innerHTML = '<div class="loading">Aucune intervention à afficher</div>';
+                return;
+            }
+
+            grid.innerHTML = filtered.map(intervention => `
+                <div class="intervention-card ${intervention.priorite.toLowerCase()}">
+                    <div class="intervention-header">
+                        <div class="intervention-id">#${intervention.gristId}</div>
+                        <span class="priority-badge priority-${intervention.priorite.toLowerCase()}">${intervention.priorite}</span>
+                    </div>
+
+                    <div class="intervention-field">
+                        <label>Agent</label>
+                        <value>👤 ${intervention.agent}</value>
+                    </div>
+
+                    <div class="intervention-field">
+                        <label>Localisation</label>
+                        <value>📍 ${intervention.localisation}</value>
+                    </div>
+
+                    <div class="intervention-field">
+                        <label>Type</label>
+                        <value>${intervention.type}</value>
+                    </div>
+
+                    <div class="intervention-field">
+                        <label>Statut</label>
+                        <value><span class="status-badge status-${intervention.statut.toLowerCase().replace(' ', '')}">${intervention.statut}</span></value>
+                    </div>
+
+                    ${intervention.commentaire ? `
+                    <div class="intervention-field">
+                        <label>Commentaire</label>
+                        <value>${intervention.commentaire}</value>
+                    </div>
+                    ` : ''}
+                </div>
+            `).join('');
+        }
+
+        // Notification
+        function showNotification(message, type = 'info') {
+            const notification = document.getElementById('notification');
+            notification.textContent = message;
+            notification.classList.add('show');
+
+            setTimeout(() => {
+                notification.classList.remove('show');
+            }, 3000);
+        }
+
+        // Démarrage
+        init().catch(error => {
+            console.error('❌ Erreur init:', error);
+            document.getElementById('interventionsGrid').innerHTML =
+                '<div class="loading">❌ Erreur lors de l\'initialisation</div>';
+        });
+    </script>
+</body>
+</html>

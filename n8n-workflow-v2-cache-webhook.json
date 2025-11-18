@@ -1,0 +1,163 @@
+{
+  "name": "Grist Realtime v2 - Cache (Webhook)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "grist-realtime-v2",
+        "options": {}
+      },
+      "id": "webhook-grist-v2",
+      "name": "Webhook Grist",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "operation": "set",
+        "key": "={{ 'intervention:' + $json.id }}",
+        "value": "={{ JSON.stringify($json.fields) }}",
+        "ttl": 86400
+      },
+      "id": "redis-setex",
+      "name": "Redis SETEX",
+      "type": "n8n-nodes-base.redis",
+      "typeVersion": 1,
+      "position": [450, 300],
+      "credentials": {
+        "redis": {
+          "id": "1",
+          "name": "Redis CEREMA"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.fields.Priorite }}",
+              "operation": "equals",
+              "value2": "Urgente"
+            }
+          ]
+        }
+      },
+      "id": "filter-urgente-v2",
+      "name": "Filtre Urgente",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [650, 300]
+    },
+    {
+      "parameters": {
+        "url": "https://matrix.agent.tchap.gouv.fr/_matrix/client/r0/rooms/{{ $env.TCHAP_ROOM_ID }}/send/m.room.message",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "tchapApi",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "msgtype",
+              "value": "m.text"
+            },
+            {
+              "name": "body",
+              "value": "🚨 INTERVENTION URGENTE\n\n📍 {{ $json.fields.Localisation }}\n👤 Agent: {{ $json.fields.Agent }}\n🔧 Type: {{ $json.fields.Type }}\n💬 {{ $json.fields.Commentaire || 'Pas de commentaire' }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "tchap-notification-v2",
+      "name": "Notification Tchap",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [850, 200]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { \"success\": true, \"message\": \"Intervention enregistrée et notifiée\", \"id\": $json.id } }}"
+      },
+      "id": "respond-success-v2",
+      "name": "Response Success",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1050, 200]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { \"success\": true, \"message\": \"Intervention enregistrée\", \"id\": $json.id } }}"
+      },
+      "id": "respond-non-urgent-v2",
+      "name": "Response Non-Urgent",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [850, 400]
+    }
+  ],
+  "connections": {
+    "Webhook Grist": {
+      "main": [
+        [
+          {
+            "node": "Redis SETEX",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Redis SETEX": {
+      "main": [
+        [
+          {
+            "node": "Filtre Urgente",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filtre Urgente": {
+      "main": [
+        [
+          {
+            "node": "Notification Tchap",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Response Non-Urgent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notification Tchap": {
+      "main": [
+        [
+          {
+            "node": "Response Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {},
+  "versionId": "v2-cache",
+  "meta": {
+    "instanceId": "cerema-grist-realtime-v2-cache"
+  },
+  "id": "v2-cache-webhook",
+  "tags": []
+}
