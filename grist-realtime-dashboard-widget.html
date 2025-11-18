@@ -711,19 +711,38 @@
             if (!gristAPI) return;
 
             try {
-                const records = await gristAPI.fetchSelectedTable();
+                const data = await gristAPI.fetchSelectedTable();
 
-                interventions = records.map(r => ({
-                    id: r.id,
-                    agent: r.Agent || 'Non assigné',
-                    localisation: r.Localisation || 'Non spécifié',
-                    type: r.Type || 'Autre',
-                    statut: r.Statut || 'En attente',
-                    priorite: r.Priorite || 'Normale',
-                    commentaire: r.Commentaire || '',
-                    derniereMaj: r.Derniere_MAJ ? new Date(r.Derniere_MAJ * 1000) : new Date(),
-                    isNew: false
-                }));
+                // Grist retourne un objet avec des colonnes, pas un array
+                // Format: { id: [...], Agent: [...], Localisation: [...] }
+
+                if (!data || !data.id) {
+                    console.warn('Aucune donnée reçue de Grist');
+                    interventions = [];
+                    calculateStats();
+                    if (document.getElementById('interventionsList')) {
+                        renderDashboard();
+                    }
+                    return;
+                }
+
+                // Convertir en array d'objets
+                const length = data.id.length;
+                interventions = [];
+
+                for (let i = 0; i < length; i++) {
+                    interventions.push({
+                        id: data.id[i],
+                        agent: data.Agent?.[i] || 'Non assigné',
+                        localisation: data.Localisation?.[i] || 'Non spécifié',
+                        type: data.Type?.[i] || 'Autre',
+                        statut: data.Statut?.[i] || 'En attente',
+                        priorite: data.Priorite?.[i] || 'Normale',
+                        commentaire: data.Commentaire?.[i] || '',
+                        derniereMaj: data.Derniere_MAJ?.[i] ? new Date(data.Derniere_MAJ[i] * 1000) : new Date(),
+                        isNew: false
+                    });
+                }
                 
                 calculateStats();
                 
